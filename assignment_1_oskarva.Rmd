@@ -1,0 +1,78 @@
+---
+title: "assignment_1"
+author: "Oskar Våle"
+date: "2024-09-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+use_python("/usr/bin/python3")
+```
+
+## Wine quality dataset
+The dataset I chose has wine quality as the target variable, represented numerically as a score between 0 and 10.
+The dataset has 13 features that mostly have to do with the chemical compositions of the different wines. 
+
+```{python}
+import pandas as pd
+from ucimlrepo import fetch_ucirepo 
+
+# Fetch dataset 
+individual_household_electric_power_consumption = fetch_ucirepo(id=235) 
+
+# Data (as pandas dataframes) 
+X = individual_household_electric_power_consumption.data.features 
+y = individual_household_electric_power_consumption.data.targets 
+
+# Metadata 
+print(individual_household_electric_power_consumption.metadata) 
+
+# Variable information 
+print(individual_household_electric_power_consumption.variables) 
+
+# Combine features and targets for easier manipulation
+data = pd.concat([X, y], axis=1)
+
+# Convert 'Date' and 'Time' into a single datetime column
+data['Datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'], format='%d/%m/%Y %H:%M:%S')
+
+# Function to categorize time of day
+def categorize_time_of_day(hour):
+    if 6 <= hour < 12:
+        return 'Morning'
+    elif 12 <= hour < 18:
+        return 'Afternoon'
+    elif 18 <= hour < 24:
+        return 'Evening'
+    else:
+        return 'Night'
+
+# Apply the function to create a new column 'Time_of_Day'
+data['Time_of_Day'] = data['Datetime'].dt.hour.apply(categorize_time_of_day)
+
+# Extract the month and create a new column 'Month'
+data['Month'] = data['Datetime'].dt.month
+
+# Drop the original Date, Time, and Datetime columns if not needed
+data = data.drop(columns=['Date', 'Time', 'Datetime'])
+
+# Perform one-hot encoding on the 'Time_of_Day' column. This is due to the fact that linear regression
+# can only handle numerical values. I could also have had a single Time_of_Day column with morning=1,
+# afternoon = 2, evening = 3, night = 4, but this implies that morning is far from night (4-1=3), which
+# could negatively impact the model.
+data = pd.get_dummies(data, columns=['Time_of_Day'], drop_first=False)
+
+# Display the first few rows of the transformed data
+print(data.head())
+
+```
+
+## Including Plots
+
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
