@@ -5,15 +5,48 @@ date: "2024-09-06"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
 knitr::opts_chunk$set(echo = TRUE)
 library(reticulate)
 use_python("/usr/bin/python3")
 ```
 
-## Wine quality dataset
-The dataset I chose has wine quality as the target variable, represented numerically as a score between 0 and 10.
-The dataset has 13 features that mostly have to do with the chemical compositions of the different wines. 
+## Power consumption dataset
+The dataset I chose is the ["Individual Household Electric Power Consumption"](https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption) dataset from
+the UCI machine learning repository.
+The dataset contains measurements of electric power consumption in a single 
+household over a period of almost 4 years. The data includes variables such 
+as global active power, global reactive power, voltage, and global intensity, 
+as well as sub-metering values corresponding to different household areas like 
+the kitchen, laundry room, and other appliances. Additionally, the data includes 
+timestamps that have been used to extract the time of day and the month in which 
+the data was recorded.
+
+This is the variable information from [UCI's page](https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption):
+1.date: Date in format dd/mm/yyyy
+2.time: time in format hh:mm:ss
+3.global_active_power: household global minute-averaged active power (in kilowatt)
+4.global_reactive_power: household global minute-averaged reactive power (in 
+kilowatt)
+5.voltage: minute-averaged voltage (in volt)
+6.global_intensity: household global minute-averaged current intensity (in ampere)
+7.sub_metering_1: energy sub-metering No. 1 (in watt-hour of active energy). 
+It corresponds to the kitchen, containing mainly a dishwasher, an oven and a 
+microwave (hot plates are not electric but gas powered).
+8.sub_metering_2: energy sub-metering No. 2 (in watt-hour of active energy). 
+It corresponds to the laundry room, containing a washing-machine, a tumble-drier, 
+a refrigerator and a light.
+9.sub_metering_3: energy sub-metering No. 3 (in watt-hour of active energy). 
+It corresponds to an electric water-heater and an air-conditioner.
+
+I decided to make one-hot encoded columns for whether a given datapoint is recorded
+in the morning, afternoon, evening or night instead of training on the 'Time' column.
+My hunch is that the model will perform better this way.
+I also made a new column 'Month', and let this one just be integers 1 - 12. Due
+to temperature, holidays and other factors, energy consumption is likely to vary
+from month to month. There is no point in training on days of the month though, as,
+except for weekends and holidays, there is no reason one day should have more consumption
+than the next.
 
 ```{python}
 import pandas as pd
@@ -26,14 +59,12 @@ individual_household_electric_power_consumption = fetch_ucirepo(id=235)
 X = individual_household_electric_power_consumption.data.features 
 y = individual_household_electric_power_consumption.data.targets 
 
-# Metadata 
-print(individual_household_electric_power_consumption.metadata) 
-
 # Variable information 
 print(individual_household_electric_power_consumption.variables) 
 
 # Combine features and targets for easier manipulation
 data = pd.concat([X, y], axis=1)
+#NOTE: The above code is taken from UCI's "import in python" function. This 
 
 # Convert 'Date' and 'Time' into a single datetime column
 data['Datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'], format='%d/%m/%Y %H:%M:%S')
@@ -58,21 +89,49 @@ data['Month'] = data['Datetime'].dt.month
 # Drop the original Date, Time, and Datetime columns if not needed
 data = data.drop(columns=['Date', 'Time', 'Datetime'])
 
-# Perform one-hot encoding on the 'Time_of_Day' column. This is due to the fact that linear regression
-# can only handle numerical values. I could also have had a single Time_of_Day column with morning=1,
-# afternoon = 2, evening = 3, night = 4, but this implies that morning is far from night (4-1=3), which
-# could negatively impact the model.
-data = pd.get_dummies(data, columns=['Time_of_Day'], drop_first=False)
+# As the output shows, some of the data is still objects. We therefore need to
+# convert it to numerical values.
+print(data.dtypes)
 
-# Display the first few rows of the transformed data
-print(data.head())
+
+cols_to_convert = ['Global_active_power', 'Global_reactive_power', 'Voltage',
+                   'Global_intensity', 'Sub_metering_1', 'Sub_metering_2']
+
+for col in cols_to_convert:
+    data[col] = pd.to_numeric(data[col], errors='coerce')
+
+#Check for NaN values
+print(data.isna().sum())
+
+#Check that all columns now have numerical values (except Time_of_Day column)
+print(data.dtypes)
+
+# Drop rows that contain NaN values
+data.dropna(axis=0, inplace=True)
+
+
+# Perform one-hot encoding on the 'Time_of_Day' column, as mentionet above.. This 
+# is due to the fact that linear regression can only handle numerical values. 
+# I could also have had a single Time_of_Day column with morning=1,
+# afternoon = 2, evening = 3, night = 4, but this implies that morning is far from 
+# night (4-1=3), which could negatively impact the model.
+data = pd.get_dummies(data, columns=['Time_of_Day'], drop_first=False)
 
 ```
 
-## Including Plots
+## Statistics on dataset
 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{python}
+summary_stats = data.describe(include="all")
+
+# Generating summary statistics for categorical variables (Time_of_Day after one-hot encoding)
+#categorical_summary = data[['Time_of_Day_Morning', 'Time_of_Day_Afternoon', 'Time_of_Day_Evening', 'Time_of_Day_Night']].agg(['sum'])
+
+# Combine the summaries
+pd.set_option('display.max_columns', None)
+#summary_stats_combined = summary_stats.append(categorical_summary)
+summary_stats_combined.loc['count'] = len(data)
+summary_stats_combined.drop('sum')
 ```
 
