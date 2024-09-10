@@ -64,7 +64,9 @@ print(individual_household_electric_power_consumption.variables)
 
 # Combine features and targets for easier manipulation
 data = pd.concat([X, y], axis=1)
-#NOTE: The above code is taken from UCI's "import in python" function. This 
+# NOTE: The above code lines are taken from UCI's "import in python" function. This 
+# is a button you can press on the respective dataset's profile on UCI's website
+# that gives you all the code you need to import the dataset via UCI's API.
 
 # Convert 'Date' and 'Time' into a single datetime column
 data['Datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'], format='%d/%m/%Y %H:%M:%S')
