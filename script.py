@@ -129,7 +129,7 @@ all_combinations = generate_combinations(possible_features)
 # Convert to list of lists and print the total count
 all_combinations_list = [list(comb) for comb in all_combinations]
 
-# Training loop
+# Now we will do a training loop where we fit a model for each combination of features, using MSE as selection criteria
 best_mse = float('inf')
 best_features = None
 best_model = None
@@ -157,3 +157,9 @@ for i, comb in enumerate(all_combinations_list):
 
 print(f'Best features: {best_features}')
 print(f'Best MSE: {best_mse}')
+
+# Now it is time to evaluate the best model on the test set to see how good our model really is.
+X_test_subset = X_test[best_features]
+y_pred = model.predict(X_test_subset)
+mse_test = mean_squared_error(y_test, y_pred)
+print(f'MSE on test set: {mse_test}')
