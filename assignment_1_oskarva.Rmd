@@ -71,17 +71,10 @@ data['Datetime'] = pd.to_datetime(data['Date'] + ' ' + data['Time'], format='%d/
 
 # Function to categorize time of day
 def categorize_time_of_day(hour):
-    if 6 <= hour < 12:
-        return 'Morning'
-    elif 12 <= hour < 18:
-        return 'Afternoon'
-    elif 18 <= hour < 24:
-        return 'Evening'
-    else:
-        return 'Night'
+    return int(hour)
 
 # Apply the function to create a new column 'Time_of_Day'
-data['Time_of_Day'] = data['Datetime'].dt.hour.apply(categorize_time_of_day)
+data['Hour'] = data['Datetime'].dt.hour.apply(categorize_time_of_day)
 
 # Extract the month and create a new column 'Month'
 data['Month'] = data['Datetime'].dt.month
@@ -109,14 +102,6 @@ print(data.dtypes)
 # Drop rows that contain NaN values
 data.dropna(axis=0, inplace=True)
 
-
-# Perform one-hot encoding on the 'Time_of_Day' column, as mentionet above.. This 
-# is due to the fact that linear regression can only handle numerical values. 
-# I could also have had a single Time_of_Day column with morning=1,
-# afternoon = 2, evening = 3, night = 4, but this implies that morning is far from 
-# night (4-1=3), which could negatively impact the model.
-data = pd.get_dummies(data, columns=['Time_of_Day'], drop_first=False)
-
 ```
 
 ## Statistics on dataset
@@ -125,13 +110,138 @@ data = pd.get_dummies(data, columns=['Time_of_Day'], drop_first=False)
 ```{python}
 summary_stats = data.describe(include="all")
 
-# Generating summary statistics for categorical variables (Time_of_Day after one-hot encoding)
-#categorical_summary = data[['Time_of_Day_Morning', 'Time_of_Day_Afternoon', 'Time_of_Day_Evening', 'Time_of_Day_Night']].agg(['sum'])
-
 # Combine the summaries
 pd.set_option('display.max_columns', None)
-#summary_stats_combined = summary_stats.append(categorical_summary)
-summary_stats_combined.loc['count'] = len(data)
-summary_stats_combined.drop('sum')
+summary_stats.loc['count'] = len(data)
+print(summary_stats)
 ```
+## Bad plot:
 
+Let us first make a bad plot. We will plot the mean daily energy usage of
+each month.
+
+```{python}
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Group data by month and calculate the mean for Global_active_power
+monthly_avg = data.groupby('Month')['Global_active_power'].mean()
+
+# Plot the data
+plt.figure(figsize=(10, 6))
+plt.plot(monthly_avg.index, monthly_avg.values, color='red', linestyle='--', marker='o', markersize=15)
+plt.title('Average Daily Energy Usage', fontsize=20)
+plt.xlabel('Month')
+plt.ylabel('Energy Usage (kW)')
+plt.xticks(ticks=np.arange(1, 13, 1), labels=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+plt.grid(True)
+plt.show()
+
+```
+#### Why this is a bad plot:
+
+* Misleading Title: The title suggests daily usage, but we're actually plotting the average monthly usage.
+* Excessive Marker Size: The markers are too large, which can obscure the trend in the data.
+* Poor Line Style: The dashed line with large markers isn't the best choice for a time series plot.
+* Inadequate Labels: The x-axis labels are abbreviated, which might not be clear for everyone.
+* No Error Bars: There are no error bars to show the variability in daily usage within each month.
+
+
+## Good plot
+
+```{python}
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Group data by month and calculate the mean and standard deviation for Global_active_power
+monthly_avg = data.groupby('Month')['Global_active_power'].mean()
+monthly_std = data.groupby('Month')['Global_active_power'].std()
+
+# Plot the data
+plt.figure(figsize=(10, 6))
+plt.errorbar(monthly_avg.index, monthly_avg.values, yerr=monthly_std.values, fmt='-o', color='blue', ecolor='lightgray', elinewidth=2, capsize=4)
+plt.title('Average Monthly Energy Usage with Variability', fontsize=16)
+plt.xlabel('Month', fontsize=14)
+plt.ylabel('Energy Usage (kW)', fontsize=14)
+plt.xticks(ticks=np.arange(1, 13, 1), labels=['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'])
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
+
+```
+#### Why the above plot is good:
+
+* Accurate Title: The title clearly states what the plot shows and includes a mention of variability.
+* Appropriate Line and Marker Style: The solid line with smaller markers provides a clean look, making trends easy to follow.
+* Error Bars: The error bars represent the variability within each month, giving the viewer a better understanding of the data's spread.
+* Clear and Descriptive Labels: The axis labels are detailed, and the month names are fully written out for clarity.
+* Improved Color Scheme: The blue line with light gray error bars provides a visually pleasing and easily interpretable color contrast.
+
+
+
+## A simple analysis
+
+Finally, I will perform a simple analysis of the dataset using linear regression.
+
+```{python}
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+
+
+# Define the features and target variable
+X = data[['Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1', 'Sub_metering_2', 'Sub_metering_3', 'Hour', 'Month']]
+y = data['Global_active_power']
+possible_features = X.columns
+
+# Split the data into training, validation and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=4)
+# Using 50% of the test set as validation set
+X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=4)
+
+# Feature selection
+from itertools import combinations
+
+# Function to generate all combinations of a list
+def generate_combinations(lst):
+    all_combinations = []
+    for r in range(1, len(lst) + 1):
+        comb = list(combinations(lst, r))
+        all_combinations.extend(comb)
+    return all_combinations
+
+# Generate all combinations
+all_combinations = generate_combinations(possible_features)
+
+# Convert to list of lists and print the total count
+all_combinations_list = [list(comb) for comb in all_combinations]
+
+# Training loop
+best_mse = float('inf')
+best_features = None
+best_model = None
+for i, comb in enumerate(all_combinations_list):
+    # Select the features
+    X_train_subset = X_train[comb]
+    X_val_subset = X_val[comb]
+    
+    # Fit the model
+    model = LinearRegression()
+    model.fit(X_train_subset, y_train)
+    
+    # Predict on the validation set
+    y_pred = model.predict(X_val_subset)
+    
+    # Calculate the mean squared error
+    mse = mean_squared_error(y_val, y_pred)
+    
+    # Update the best model if the current model is better
+    if mse < best_mse:
+        best_mse = mse
+        best_features = comb
+        best_model = model
+    print(f'Iteration {i+1}/{len(all_combinations_list)} - MSE: {mse}')
+
+print(f'Best features: {best_features}')
+print(f'Best MSE: {best_mse}')
+```
