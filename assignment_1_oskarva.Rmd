@@ -39,7 +39,7 @@ a refrigerator and a light.
 9.sub_metering_3: energy sub-metering No. 3 (in watt-hour of active energy). 
 It corresponds to an electric water-heater and an air-conditioner.
 
-I decided to make an "hour" column, which is just the hour of the day. This is
+I decided to make an 'Hour' column, which is just the hour of the day. This is
 because energy consumption is likely to vary depending on the time of day, and hour
 integes will probably be easier for the model to interpret than unix timestamps.
 I also made a new column 'Month', and let this one just be integers 1 - 12. Due
