@@ -1,5 +1,5 @@
 ---
-title: "assignment_1"
+title: "Assignment 1"
 author: "Oskar Våle"
 date: "2024-09-06"
 output: pdf_document
@@ -39,9 +39,9 @@ a refrigerator and a light.
 9.sub_metering_3: energy sub-metering No. 3 (in watt-hour of active energy). 
 It corresponds to an electric water-heater and an air-conditioner.
 
-I decided to make one-hot encoded columns for whether a given datapoint is recorded
-in the morning, afternoon, evening or night instead of training on the 'Time' column.
-My hunch is that the model will perform better this way.
+I decided to make an "hour" column, which is just the hour of the day. This is
+because energy consumption is likely to vary depending on the time of day, and hour
+integes will probably be easier for the model to interpret than unix timestamps.
 I also made a new column 'Month', and let this one just be integers 1 - 12. Due
 to temperature, holidays and other factors, energy consumption is likely to vary
 from month to month. There is no point in training on days of the month though, as,
@@ -138,6 +138,7 @@ plt.grid(True)
 plt.show()
 
 ```
+
 #### Why this is a bad plot:
 
 * Misleading Title: The title suggests daily usage, but we're actually plotting the average monthly usage.
@@ -169,6 +170,7 @@ plt.tight_layout()
 plt.show()
 
 ```
+
 #### Why the above plot is good:
 
 * Accurate Title: The title clearly states what the plot shows and includes a mention of variability.
@@ -183,7 +185,7 @@ plt.show()
 
 Finally, I will perform a simple analysis of the dataset using linear regression.
 
-```{python}
+```{python, echo=TRUE, results='hide'}
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
@@ -240,10 +242,15 @@ for i, comb in enumerate(all_combinations_list):
         best_mse = mse
         best_features = comb
         best_model = model
-    print(f'Iteration {i+1}/{len(all_combinations_list)} - MSE: {mse}')
+    # Uncomment the below line to see training loop progress and MSE values
+    #print(f'Iteration {i+1}/{len(all_combinations_list)} - MSE: {mse}') 
 
+
+```
+
+```{python}
 print(f'Best features: {best_features}')
-print(f'Best MSE: {best_mse}')
+print(f'Best MSE on validation set: {best_mse}')
 
 # Now it is time to evaluate the best model on the test set to see how good our model really is.
 X_test_subset = X_test[best_features]
