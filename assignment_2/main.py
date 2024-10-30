@@ -108,7 +108,7 @@ plt.xlabel('Test Error')
 plt.ylabel('Density')
 plt.title('Empirical Distribution of Test Errors (Model i vs Model ii)')
 plt.legend()
-plt.savefig(f'plot_output_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
+plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
 # Comments on the results
@@ -179,7 +179,7 @@ sns.histplot(bootstrap_alphas, kde=True)
 plt.xlabel('Alpha')
 plt.ylabel('Frequency')
 plt.title('Bootstrap Distribution of Optimal Alpha for Ridge Regression')
-plt.savefig(f'plot_output_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
+plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
 # (e) Generalized Additive Model (GAM)
@@ -198,7 +198,7 @@ reg_tree = DecisionTreeRegressor(random_state=42)
 reg_tree.fit(X_train, y_train)
 plt.figure(figsize=(20, 10), dpi=300)
 plot_tree(reg_tree, filled=True, feature_names=X_train.columns, precision=2)
-plt.savefig(f'plot_output_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
+plt.savefig(f'regression_tree_plot_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
 plt.close()
 
 # (g) Compare all models in terms of training and test error
@@ -265,7 +265,7 @@ plt.xlabel('Number of Neighbors k')
 plt.ylabel('Accuracy')
 plt.title('k-NN Classifier - Cross-Validation Results')
 plt.legend()
-plt.savefig(f'plot_output_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
+plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
 # Select best k and fit k-NN on test data
