@@ -5,8 +5,8 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_squared_error
-from sklearn.tree import DecisionTreeRegressor, plot_tree
+from sklearn.metrics import mean_squared_error, accuracy_score
+from sklearn.tree import DecisionTreeRegressor, plot_tree, DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier, RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
@@ -14,6 +14,11 @@ from sklearn.compose import ColumnTransformer
 from patsy import dmatrix
 import statsmodels.api as sm
 import seaborn as sns
+import random
+
+# Set random seed for reproducibility
+np.random.seed(42)
+random.seed(42)
 
 # Load dataset for regression (Problem 1)
 data = pd.read_csv('./assignment_2/qsar_aquatic_toxicity-csv', sep=';')
@@ -23,7 +28,7 @@ columns = ['TPSA', 'SAacc', 'H050', 'MLOGP', 'RDCHI', 'GATS1p', 'nN', 'C040', 'L
 data.columns = columns
 
 # Split dataset into training and test sets
-train_data, test_data = train_test_split(data, test_size=0.33, random_state=42)
+train_data, test_data = train_test_split(data, test_size=0.33)
 
 # Define features and target
 X_train = train_data.drop(columns=['LC50'])
@@ -74,8 +79,8 @@ test_errors_1 = []
 train_errors_2 = []
 test_errors_2 = []
 
-for _ in range(200):
-    train_data, test_data = train_test_split(data, test_size=0.33)
+for i in range(200):
+    train_data, test_data = train_test_split(data, test_size=0.33, random_state=i)
     X_train = train_data.drop(columns=['LC50'])
     y_train = train_data['LC50']
     X_test = test_data.drop(columns=['LC50'])
@@ -163,8 +168,8 @@ print(f"Optimal alpha using Cross-Validation: {ridge_cv.alpha_}")
 
 # Bootstrap to find optimal alpha
 bootstrap_alphas = []
-for _ in range(100):
-    X_resampled, y_resampled = resample(X_train, y_train)
+for i in range(100):
+    X_resampled, y_resampled = resample(X_train, y_train, random_state=i)
     ridge_cv = RidgeCV(alphas=alphas, cv=5).fit(X_resampled, y_resampled)
     bootstrap_alphas.append(ridge_cv.alpha_)
 
@@ -211,3 +216,99 @@ for model_name, model in models.items():
     train_error = mean_squared_error(y_train, train_pred)
     test_error = mean_squared_error(y_test, test_pred)
     print(f"{model_name} - Training Error: {train_error}, Test Error: {test_error}")
+
+# Load dataset for classification (Problem 2)
+pima_data = pd.read_csv('./assignment_2/pimaindiansdiabetes2.csv')
+
+# Drop columns 'triceps' and 'insulin'
+pima_data = pima_data.drop(columns=['triceps', 'insulin'])
+
+# Drop rows with any remaining NaN values
+pima_data = pima_data.dropna()
+
+# Split dataset into training and test sets
+train_data_pima, test_data_pima = train_test_split(pima_data, test_size=0.33, random_state=42)
+
+# Define features and target for classification
+X_train_pima = train_data_pima.drop(columns=['diabetes'])
+from sklearn.preprocessing import LabelEncoder
+
+label_encoder = LabelEncoder()
+y_train_pima = label_encoder.fit_transform(train_data_pima['diabetes'])
+X_test_pima = test_data_pima.drop(columns=['diabetes'])
+y_test_pima = label_encoder.transform(test_data_pima['diabetes'])
+
+# (a) Fit a k-NN classifier
+k_values = range(1, 21)
+k_scores_5_fold = []
+k_scores_loocv = []
+
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k)
+    # 5-fold cross-validation
+    score_5_fold = cross_val_score(knn, X_train_pima, y_train_pima, cv=5, scoring='accuracy').mean()
+    k_scores_5_fold.append(score_5_fold)
+    # Leave-One-Out Cross-Validation (LOOCV)
+    from sklearn.model_selection import StratifiedKFold
+    cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    score_loocv = cross_val_score(knn, X_train_pima, y_train_pima, cv=cv_strategy, scoring='accuracy').mean()
+    k_scores_loocv.append(score_loocv)
+
+# Plot cross-validation results
+plt.figure(figsize=(10, 6))
+plt.plot(k_values, k_scores_5_fold, label='5-Fold CV Error')
+plt.plot(k_values, k_scores_loocv, label='LOOCV Error')
+plt.xlabel('Number of Neighbors k')
+plt.ylabel('Accuracy')
+plt.title('k-NN Classifier - Cross-Validation Results')
+plt.legend()
+plt.show()
+
+# Select best k and fit k-NN on test data
+best_k = k_values[np.argmax(k_scores_5_fold)]
+knn_best = KNeighborsClassifier(n_neighbors=best_k)
+knn_best.fit(X_train_pima, y_train_pima)
+y_test_pred_knn = knn_best.predict(X_test_pima)
+test_accuracy_knn = accuracy_score(y_test_pima, y_test_pred_knn)
+print(f"Best k: {best_k}, Test Accuracy: {test_accuracy_knn}")
+
+# (b) Fit a GAM with splines and use variable selection
+from pygam import LogisticGAM
+
+# Fit Logistic GAM
+gam_pima = LogisticGAM(s(0) + s(1) + s(2) + s(3) + s(4) + s(5)).fit(X_train_pima, y_train_pima)
+print("Selected variables for GAM:")
+gam_summary = gam_pima.summary()
+print(gam_summary)
+
+# (c) Fit a classification tree, bagged trees, and random forest
+# Classification Tree
+clf_tree = DecisionTreeClassifier(random_state=42)
+clf_tree.fit(X_train_pima, y_train_pima)
+y_test_pred_tree = clf_tree.predict(X_test_pima)
+test_accuracy_tree = accuracy_score(y_test_pima, y_test_pred_tree)
+print(f"Classification Tree - Test Accuracy: {test_accuracy_tree}")
+
+# Bagged Trees
+bagged_trees = BaggingClassifier(estimator=DecisionTreeClassifier(), n_estimators=50, random_state=42)
+bagged_trees.fit(X_train_pima, y_train_pima)
+y_test_pred_bagged = bagged_trees.predict(X_test_pima)
+test_accuracy_bagged = accuracy_score(y_test_pima, y_test_pred_bagged)
+print(f"Bagged Trees - Test Accuracy: {test_accuracy_bagged}")
+
+# Random Forest
+random_forest = RandomForestClassifier(n_estimators=100, random_state=42)
+random_forest.fit(X_train_pima, y_train_pima)
+y_test_pred_rf = random_forest.predict(X_test_pima)
+test_accuracy_rf = accuracy_score(y_test_pima, y_test_pred_rf)
+print(f"Random Forest - Test Accuracy: {test_accuracy_rf}")
+
+# (d) Fit a neural network
+mlp = MLPClassifier(hidden_layer_sizes=(10, 10), max_iter=1000, random_state=42)
+mlp.fit(X_train_pima, y_train_pima)
+y_test_pred_mlp = mlp.predict(X_test_pima)
+test_accuracy_mlp = accuracy_score(y_test_pima, y_test_pred_mlp)
+print(f"Neural Network - Test Accuracy: {test_accuracy_mlp}")
+
+# (e) Recommendation of the best model for analysis
+print("Based on the test accuracy, the best model will be determined after evaluating the test results of all models.")
