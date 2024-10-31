@@ -351,11 +351,8 @@ plt.close()
 # Load dataset for classification (Problem 2)
 pima_data = pd.read_csv('./assignment_2/pimaindiansdiabetes2.csv')
 
-# Drop columns 'triceps' and 'insulin'
-pima_data = pima_data.drop(columns=['triceps', 'insulin'])
-
-# Drop rows with any remaining NaN values
-pima_data = pima_data.dropna()
+# Drop columns 'triceps' and 'insulin' and remove NaN values
+pima_data = pima_data.drop(columns=['triceps', 'insulin']).dropna()
 
 # Split dataset into training and test sets
 train_data_pima, test_data_pima = train_test_split(pima_data, test_size=0.33, random_state=42)
@@ -370,28 +367,41 @@ y_test_pima = label_encoder.transform(test_data_pima['diabetes'])
 # (a) Fit a k-NN classifier
 k_values = range(1, 21)
 k_scores_5_fold = []
-k_scores_loocv = []
 
+# 5-fold Cross-Validation
 for k in k_values:
     knn = KNeighborsClassifier(n_neighbors=k)
-    # 5-fold cross-validation
     score_5_fold = cross_val_score(knn, X_train_pima, y_train_pima, cv=5, scoring='accuracy').mean()
     k_scores_5_fold.append(score_5_fold)
-    # Leave-One-Out Cross-Validation (LOOCV)
-    from sklearn.model_selection import StratifiedKFold
-    cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    score_loocv = cross_val_score(knn, X_train_pima, y_train_pima, cv=cv_strategy, scoring='accuracy').mean()
+
+# Leave-One-Out Cross-Validation (LOOCV)
+from sklearn.model_selection import LeaveOneOut
+loo = LeaveOneOut()
+k_scores_loocv = []
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k)
+    score_loocv = cross_val_score(knn, X_train_pima, y_train_pima, cv=loo, scoring='accuracy').mean()
     k_scores_loocv.append(score_loocv)
 
-# Plot cross-validation results
+# Calculate Test Errors for different k values
+test_errors = []
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train_pima, y_train_pima)
+    y_test_pred = knn.predict(X_test_pima)
+    test_error = 1 - accuracy_score(y_test_pima, y_test_pred)  # Calculate test error as 1 - accuracy
+    test_errors.append(test_error)
+
+# Plot cross-validation and test errors
 plt.figure(figsize=(10, 6))
-plt.plot(k_values, k_scores_5_fold, label='5-Fold CV Error')
-plt.plot(k_values, k_scores_loocv, label='LOOCV Error')
+plt.plot(k_values, 1 - np.array(k_scores_5_fold), label='5-Fold CV Error', linestyle='--', marker='o')
+plt.plot(k_values, 1 - np.array(k_scores_loocv), label='LOOCV Error', linestyle='--', marker='o')
+plt.plot(k_values, test_errors, label='Test Error', linestyle='-', marker='s', color='red')
 plt.xlabel('Number of Neighbors k')
-plt.ylabel('Accuracy')
-plt.title('k-NN Classifier - Cross-Validation Results')
+plt.ylabel('Error Rate')
+plt.title('k-NN Classifier - Cross-Validation and Test Errors')
 plt.legend()
-plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
+plt.savefig(f'knn_crossvalidation_test_error_plot_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
 # Select best k and fit k-NN on test data
@@ -410,33 +420,67 @@ gam_summary = gam_pima.summary()
 print(gam_summary)
 
 # (c) Fit a classification tree, bagged trees, and random forest
+
 # Classification Tree
 clf_tree = DecisionTreeClassifier(random_state=42)
 clf_tree.fit(X_train_pima, y_train_pima)
+y_train_pred_tree = clf_tree.predict(X_train_pima)
 y_test_pred_tree = clf_tree.predict(X_test_pima)
+train_accuracy_tree = accuracy_score(y_train_pima, y_train_pred_tree)
 test_accuracy_tree = accuracy_score(y_test_pima, y_test_pred_tree)
+print(f"Classification Tree - Training Accuracy: {train_accuracy_tree}")
 print(f"Classification Tree - Test Accuracy: {test_accuracy_tree}")
 
 # Bagged Trees
 bagged_trees = BaggingClassifier(estimator=DecisionTreeClassifier(), n_estimators=50, random_state=42)
 bagged_trees.fit(X_train_pima, y_train_pima)
+y_train_pred_bagged = bagged_trees.predict(X_train_pima)
 y_test_pred_bagged = bagged_trees.predict(X_test_pima)
+train_accuracy_bagged = accuracy_score(y_train_pima, y_train_pred_bagged)
 test_accuracy_bagged = accuracy_score(y_test_pima, y_test_pred_bagged)
+print(f"Bagged Trees - Training Accuracy: {train_accuracy_bagged}")
 print(f"Bagged Trees - Test Accuracy: {test_accuracy_bagged}")
 
 # Random Forest
 random_forest = RandomForestClassifier(n_estimators=100, random_state=42)
 random_forest.fit(X_train_pima, y_train_pima)
+y_train_pred_rf = random_forest.predict(X_train_pima)
 y_test_pred_rf = random_forest.predict(X_test_pima)
+train_accuracy_rf = accuracy_score(y_train_pima, y_train_pred_rf)
 test_accuracy_rf = accuracy_score(y_test_pima, y_test_pred_rf)
+print(f"Random Forest - Training Accuracy: {train_accuracy_rf}")
 print(f"Random Forest - Test Accuracy: {test_accuracy_rf}")
 
+
 # (d) Fit a neural network
-mlp = MLPClassifier(hidden_layer_sizes=(10, 10), max_iter=1000, random_state=42)
-mlp.fit(X_train_pima, y_train_pima)
-y_test_pred_mlp = mlp.predict(X_test_pima)
-test_accuracy_mlp = accuracy_score(y_test_pima, y_test_pred_mlp)
-print(f"Neural Network - Test Accuracy: {test_accuracy_mlp}")
+from sklearn.model_selection import GridSearchCV
+
+# Define parameter grid for hidden layer sizes
+parameter_space = {
+    'hidden_layer_sizes': [(10,), (10, 10), (50,), (50, 50), (100,), (100, 50)],
+    'max_iter': [1000],
+    'random_state': [42]
+}
+
+# Set up the MLPClassifier and GridSearchCV
+mlp = MLPClassifier()
+clf = GridSearchCV(mlp, parameter_space, n_jobs=-1, cv=5, scoring='accuracy')
+
+# Fit the grid search to find the best parameters
+clf.fit(X_train_pima, y_train_pima)
+
+# Output the best parameters found
+print(f"Best parameters found: {clf.best_params_}")
+
+# Train final model using best parameters
+best_mlp = clf.best_estimator_
+y_train_pred_best_mlp = best_mlp.predict(X_train_pima)
+y_test_pred_best_mlp = best_mlp.predict(X_test_pima)
+train_accuracy_best_mlp = accuracy_score(y_train_pima, y_train_pred_best_mlp)
+test_accuracy_best_mlp = accuracy_score(y_test_pima, y_test_pred_best_mlp)
+print(f"Best Neural Network - Training Accuracy: {train_accuracy_best_mlp}")
+print(f"Best Neural Network - Test Accuracy: {test_accuracy_best_mlp}")
+
 
 # (e) Recommendation of the best model for analysis
 print("Based on the test accuracy, the best model will be determined after evaluating the test results of all models.")
