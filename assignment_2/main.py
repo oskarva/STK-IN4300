@@ -1,20 +1,21 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.linear_model import LinearRegression, Ridge, RidgeCV
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error, accuracy_score
 from sklearn.tree import DecisionTreeRegressor, plot_tree, DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier, RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.compose import ColumnTransformer
+from sklearn.utils import resample
 from patsy import dmatrix
 import statsmodels.api as sm
 import seaborn as sns
 import random
+from pygam import LinearGAM, LogisticGAM, s
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -126,7 +127,6 @@ X_train_const = sm.add_constant(X_train)
 model_ols = sm.OLS(y_train, X_train_const).fit()
 backward_aic_model = model_ols
 while True:
-    aic = backward_aic_model.aic
     max_pval = backward_aic_model.pvalues.idxmax()
     if backward_aic_model.pvalues[max_pval] > 0.05:
         X_train_const = X_train_const.drop(columns=[max_pval])
@@ -136,14 +136,28 @@ while True:
 print("Backward Elimination (AIC) Model Summary:")
 print(backward_aic_model.summary())
 
+# Backward Elimination with BIC
+X_train_const_bic = sm.add_constant(X_train)
+model_ols_bic = sm.OLS(y_train, X_train_const_bic).fit()
+backward_bic_model = model_ols_bic
+while True:
+    max_pval = backward_bic_model.pvalues.idxmax()
+    if backward_bic_model.pvalues[max_pval] > 0.05:
+        X_train_const_bic = X_train_const_bic.drop(columns=[max_pval])
+        backward_bic_model = sm.OLS(y_train, X_train_const_bic).fit()
+    else:
+        break
+print("Backward Elimination (BIC) Model Summary:")
+print(backward_bic_model.summary())
+
 # Forward Selection with AIC
 remaining_features = list(X_train.columns)
-selected_features = []
+selected_features_aic = []
 current_score, best_new_score = float('inf'), float('inf')
 while remaining_features:
     scores_with_candidates = []
     for candidate in remaining_features:
-        features = selected_features + [candidate]
+        features = selected_features_aic + [candidate]
         X_train_const = sm.add_constant(X_train[features])
         model = sm.OLS(y_train, X_train_const).fit()
         scores_with_candidates.append((model.aic, candidate))
@@ -151,17 +165,36 @@ while remaining_features:
     best_new_score, best_candidate = scores_with_candidates[0]
     if current_score > best_new_score:
         remaining_features.remove(best_candidate)
-        selected_features.append(best_candidate)
+        selected_features_aic.append(best_candidate)
         current_score = best_new_score
     else:
         break
 print("Selected features using Forward Selection with AIC:")
-print(selected_features)
+print(selected_features_aic)
+
+# Forward Selection with BIC
+remaining_features = list(X_train.columns)
+selected_features_bic = []
+current_score, best_new_score = float('inf'), float('inf')
+while remaining_features:
+    scores_with_candidates = []
+    for candidate in remaining_features:
+        features = selected_features_bic + [candidate]
+        X_train_const = sm.add_constant(X_train[features])
+        model = sm.OLS(y_train, X_train_const).fit()
+        scores_with_candidates.append((model.bic, candidate))
+    scores_with_candidates.sort()
+    best_new_score, best_candidate = scores_with_candidates[0]
+    if current_score > best_new_score:
+        remaining_features.remove(best_candidate)
+        selected_features_bic.append(best_candidate)
+        current_score = best_new_score
+    else:
+        break
+print("Selected features using Forward Selection with BIC:")
+print(selected_features_bic)
 
 # (d) Ridge Regression with Bootstrap and Cross-Validation
-from sklearn.linear_model import RidgeCV
-from sklearn.utils import resample
-
 # Cross-Validation to find optimal alpha
 alphas = np.logspace(-6, 6, 13)
 ridge_cv = RidgeCV(alphas=alphas, cv=5).fit(X_train, y_train)
@@ -183,8 +216,6 @@ plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300
 plt.close()
 
 # (e) Generalized Additive Model (GAM)
-from pygam import LinearGAM, s
-
 # Fit a GAM with different levels of complexity
 gam_1 = LinearGAM(s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7)).fit(X_train, y_train)
 gam_2 = LinearGAM(s(0, n_splines=10) + s(1, n_splines=10) + s(2, n_splines=10) + s(3, n_splines=10) +
@@ -193,11 +224,30 @@ gam_2 = LinearGAM(s(0, n_splines=10) + s(1, n_splines=10) + s(2, n_splines=10) +
 print(f"GAM Model 1 AIC: {gam_1.statistics_['AIC']}")
 print(f"GAM Model 2 AIC: {gam_2.statistics_['AIC']}")
 
-# (f) Regression Tree
+# (f) Regression Tree with Cost-Complexity Pruning
 reg_tree = DecisionTreeRegressor(random_state=42)
 reg_tree.fit(X_train, y_train)
+
+# Cost-Complexity Pruning
+path = reg_tree.cost_complexity_pruning_path(X_train, y_train)
+ccp_alphas, impurities = path.ccp_alphas, path.impurities
+
+# Train multiple trees with different alpha values and choose the best one based on validation error
+trees = []
+for ccp_alpha in ccp_alphas:
+    tree = DecisionTreeRegressor(random_state=42, ccp_alpha=ccp_alpha)
+    tree.fit(X_train, y_train)
+    trees.append(tree)
+
+# Evaluate the validation error for each tree and select the best one
+validation_errors = [mean_squared_error(y_test, tree.predict(X_test)) for tree in trees]
+best_tree_idx = np.argmin(validation_errors)
+best_tree = trees[best_tree_idx]
+
+print(f"Best tree chosen with ccp_alpha={ccp_alphas[best_tree_idx]}")
+
 plt.figure(figsize=(20, 10), dpi=300)
-plot_tree(reg_tree, filled=True, feature_names=X_train.columns, precision=2)
+plot_tree(best_tree, filled=True, feature_names=X_train.columns, precision=2)
 plt.savefig(f'regression_tree_plot_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
 plt.close()
 
@@ -206,7 +256,7 @@ models = {
     "Linear Regression (Direct)": lr_model_1,
     "Linear Regression (One-Hot)": lr_model_2,
     "Ridge Regression": ridge_cv,
-    "Regression Tree": reg_tree,
+    "Regression Tree": best_tree,
 }
 
 for model_name, model in models.items():
@@ -234,8 +284,6 @@ train_data_pima, test_data_pima = train_test_split(pima_data, test_size=0.33, ra
 
 # Define features and target for classification
 X_train_pima = train_data_pima.drop(columns=['diabetes'])
-from sklearn.preprocessing import LabelEncoder
-
 label_encoder = LabelEncoder()
 y_train_pima = label_encoder.fit_transform(train_data_pima['diabetes'])
 X_test_pima = test_data_pima.drop(columns=['diabetes'])
@@ -277,8 +325,6 @@ test_accuracy_knn = accuracy_score(y_test_pima, y_test_pred_knn)
 print(f"Best k: {best_k}, Test Accuracy: {test_accuracy_knn}")
 
 # (b) Fit a GAM with splines and use variable selection
-from pygam import LogisticGAM
-
 # Fit Logistic GAM
 gam_pima = LogisticGAM(s(0) + s(1) + s(2) + s(3) + s(4) + s(5)).fit(X_train_pima, y_train_pima)
 print("Selected variables for GAM:")
