@@ -54,6 +54,12 @@ test_error_1 = mean_squared_error(y_test, y_test_pred_1)
 print(f"Training Error (Model i): {train_error_1}")
 print(f"Test Error (Model i): {test_error_1}")
 
+# Regression coefficients for Model i
+print("Regression Coefficients (Model i):")
+print(lr_model_1.coef_)
+print("Intercept (Model i):")
+print(lr_model_1.intercept_)
+
 # Option ii: One-hot encoding of count variables
 encoder = OneHotEncoder(handle_unknown='ignore')
 X_train_encoded = encoder.fit_transform(X_train[['nN', 'C040']]).toarray()
@@ -73,6 +79,26 @@ train_error_2 = mean_squared_error(y_train, y_train_pred_2)
 test_error_2 = mean_squared_error(y_test, y_test_pred_2)
 print(f"Training Error (Model ii): {train_error_2}")
 print(f"Test Error (Model ii): {test_error_2}")
+
+# Regression coefficients for Model ii
+print("Regression Coefficients (Model ii):")
+print(lr_model_2.coef_)
+print("Intercept (Model ii):")
+print(lr_model_2.intercept_)
+
+# Extract regression coefficients for comparison
+common_features = ['TPSA', 'SAacc', 'H050', 'MLOGP', 'RDCHI', 'GATS1p']
+coefficients_model_i = lr_model_1.coef_[:len(common_features)]
+coefficients_model_ii = lr_model_2.coef_[:len(common_features)]
+
+# Generate LaTeX table for common coefficients
+table = ""
+for feature, coef_i, coef_ii in zip(common_features, coefficients_model_i, coefficients_model_ii):
+    table += f"{feature} & {coef_i:.4f} & {coef_ii:.4f} \\\n"
+
+
+print(table)
+
 
 # Repeat the procedure described in (a) 200 times
 train_errors_1 = []
