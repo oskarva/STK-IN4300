@@ -112,12 +112,6 @@ plt.legend()
 plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
-# Comments on the results
-def comment_on_results():
-    print("Model i generally performs better than Model ii, as the one-hot encoding adds unnecessary complexity when count variables do not significantly benefit from being treated as categorical.")
-    print("The empirical distribution indicates that Model ii tends to have a higher variance in its test errors, reflecting overfitting due to increased dimensionality.")
-
-comment_on_results()
 
 # (c) Variable Selection using Backward Elimination and Forward Selection
 import statsmodels.api as sm
@@ -127,10 +121,15 @@ X_train_const = sm.add_constant(X_train)
 model_ols = sm.OLS(y_train, X_train_const).fit()
 backward_aic_model = model_ols
 while True:
+    current_aic = backward_aic_model.aic
     max_pval = backward_aic_model.pvalues.idxmax()
     if backward_aic_model.pvalues[max_pval] > 0.05:
         X_train_const = X_train_const.drop(columns=[max_pval])
-        backward_aic_model = sm.OLS(y_train, X_train_const).fit()
+        new_model = sm.OLS(y_train, X_train_const).fit()
+        if new_model.aic < current_aic:
+            backward_aic_model = new_model
+        else:
+            break
     else:
         break
 print("Backward Elimination (AIC) Model Summary:")
@@ -141,10 +140,15 @@ X_train_const_bic = sm.add_constant(X_train)
 model_ols_bic = sm.OLS(y_train, X_train_const_bic).fit()
 backward_bic_model = model_ols_bic
 while True:
+    current_bic = backward_bic_model.bic
     max_pval = backward_bic_model.pvalues.idxmax()
     if backward_bic_model.pvalues[max_pval] > 0.05:
         X_train_const_bic = X_train_const_bic.drop(columns=[max_pval])
-        backward_bic_model = sm.OLS(y_train, X_train_const_bic).fit()
+        new_model_bic = sm.OLS(y_train, X_train_const_bic).fit()
+        if new_model_bic.bic < current_bic:
+            backward_bic_model = new_model_bic
+        else:
+            break
     else:
         break
 print("Backward Elimination (BIC) Model Summary:")
@@ -194,6 +198,21 @@ while remaining_features:
 print("Selected features using Forward Selection with BIC:")
 print(selected_features_bic)
 
+# Comparison of Models
+print("\nComparison of Selected Features:")
+print("Backward Elimination with AIC Selected Features:")
+print(X_train_const.columns)
+
+print("Backward Elimination with BIC Selected Features:")
+print(X_train_const_bic.columns)
+
+print("Forward Selection with AIC Selected Features:")
+print(selected_features_aic)
+
+print("Forward Selection with BIC Selected Features:")
+print(selected_features_bic)
+
+
 # (d) Ridge Regression with Bootstrap and Cross-Validation
 # Cross-Validation to find optimal alpha
 alphas = np.logspace(-6, 6, 13)
@@ -208,10 +227,12 @@ for i in range(100):
     bootstrap_alphas.append(ridge_cv.alpha_)
 
 plt.figure(figsize=(10, 6))
-sns.histplot(bootstrap_alphas, kde=True)
+sns.histplot(bootstrap_alphas, kde=True, label='Bootstrap Alphas', color='blue')
+plt.axvline(ridge_cv.alpha_, color='red', linestyle='--', label='Cross-Validation Optimal Alpha')
 plt.xlabel('Alpha')
 plt.ylabel('Frequency')
-plt.title('Bootstrap Distribution of Optimal Alpha for Ridge Regression')
+plt.title('Bootstrap Distribution vs Cross-Validation Optimal Alpha for Ridge Regression')
+plt.legend()
 plt.savefig(f'plot_output_{random.randint(0, 10000)}.png', format='png', dpi=300)
 plt.close()
 
@@ -224,51 +245,108 @@ gam_2 = LinearGAM(s(0, n_splines=10) + s(1, n_splines=10) + s(2, n_splines=10) +
 print(f"GAM Model 1 AIC: {gam_1.statistics_['AIC']}")
 print(f"GAM Model 2 AIC: {gam_2.statistics_['AIC']}")
 
+# Test set performance
+y_test_pred_1 = gam_1.predict(X_test)
+y_test_pred_2 = gam_2.predict(X_test)
+
+mse_1 = mean_squared_error(y_test, y_test_pred_1)
+mse_2 = mean_squared_error(y_test, y_test_pred_2)
+
+print(f"GAM Model 1 Test MSE: {mse_1}")
+print(f"GAM Model 2 Test MSE: {mse_2}")
+
 # (f) Regression Tree with Cost-Complexity Pruning
+from sklearn.model_selection import train_test_split
+
+# Fit initial regression tree
 reg_tree = DecisionTreeRegressor(random_state=42)
 reg_tree.fit(X_train, y_train)
 
-# Cost-Complexity Pruning
-path = reg_tree.cost_complexity_pruning_path(X_train, y_train)
+# Split training data into training and validation subsets
+X_train_sub, X_val, y_train_sub, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+# Cost-Complexity Pruning Path
+path = reg_tree.cost_complexity_pruning_path(X_train_sub, y_train_sub)
 ccp_alphas, impurities = path.ccp_alphas, path.impurities
 
-# Train multiple trees with different alpha values and choose the best one based on validation error
+# Train multiple trees with different alpha values
 trees = []
 for ccp_alpha in ccp_alphas:
     tree = DecisionTreeRegressor(random_state=42, ccp_alpha=ccp_alpha)
-    tree.fit(X_train, y_train)
+    tree.fit(X_train_sub, y_train_sub)
     trees.append(tree)
 
-# Evaluate the validation error for each tree and select the best one
-validation_errors = [mean_squared_error(y_test, tree.predict(X_test)) for tree in trees]
+# Evaluate the validation error for each tree
+validation_errors = [mean_squared_error(y_val, tree.predict(X_val)) for tree in trees]
+
+# Select the best tree based on validation error
 best_tree_idx = np.argmin(validation_errors)
 best_tree = trees[best_tree_idx]
 
 print(f"Best tree chosen with ccp_alpha={ccp_alphas[best_tree_idx]}")
 
+# Plot validation error vs complexity parameter alpha
+plt.figure(figsize=(10, 6))
+plt.plot(ccp_alphas, validation_errors, marker='o', linestyle='--')
+plt.xlabel('Alpha (ccp_alpha)')
+plt.ylabel('Validation Error (MSE)')
+plt.title('Validation Error vs. Complexity Parameter (Alpha)')
+plt.savefig(f'validation_error_vs_alpha_{random.randint(0, 10000)}.png', format='png', dpi=300)
+plt.close()
+
+# Plot the best tree
 plt.figure(figsize=(20, 10), dpi=300)
 plot_tree(best_tree, filled=True, feature_names=X_train.columns, precision=2)
 plt.savefig(f'regression_tree_plot_{random.randint(0, 10000)}.svg', format='svg', dpi=300)
 plt.close()
 
+
 # (g) Compare all models in terms of training and test error
+
+# Include all models: Linear Regression, Ridge Regression, Regression Tree, and GAMs
 models = {
     "Linear Regression (Direct)": lr_model_1,
     "Linear Regression (One-Hot)": lr_model_2,
     "Ridge Regression": ridge_cv,
     "Regression Tree": best_tree,
+    "GAM (Default Splines)": gam_1,
+    "GAM (10 Splines)": gam_2,
 }
 
+# Create dictionaries to store training and test errors for each model
+train_errors = {}
+test_errors = {}
+
 for model_name, model in models.items():
-    if model_name in ["Linear Regression (Direct)", "Linear Regression (One-Hot)"]:
-        train_pred = model.predict(X_train) if model_name == "Linear Regression (Direct)" else model.predict(X_train_combined)
-        test_pred = model.predict(X_test) if model_name == "Linear Regression (Direct)" else model.predict(X_test_combined)
+    if model_name == "Linear Regression (One-Hot)":
+        train_pred = model.predict(X_train_combined)
+        test_pred = model.predict(X_test_combined)
     else:
         train_pred = model.predict(X_train)
         test_pred = model.predict(X_test)
+
     train_error = mean_squared_error(y_train, train_pred)
     test_error = mean_squared_error(y_test, test_pred)
+    train_errors[model_name] = train_error
+    test_errors[model_name] = test_error
     print(f"{model_name} - Training Error: {train_error}, Test Error: {test_error}")
+
+# Plotting training and test errors for comparison
+plt.figure(figsize=(14, 8))
+bar_width = 0.35
+index = np.arange(len(models))
+
+train_bar = plt.bar(index, list(train_errors.values()), bar_width, label='Training Error', color='b')
+test_bar = plt.bar(index + bar_width, list(test_errors.values()), bar_width, label='Test Error', color='r')
+
+plt.xlabel('Models')
+plt.ylabel('Mean Squared Error')
+plt.title('Training and Test Errors for Different Models')
+plt.xticks(index + bar_width / 2, list(models.keys()), rotation=45)
+plt.legend()
+plt.tight_layout()
+plt.savefig(f'model_comparison_plot_{random.randint(0, 10000)}.png', format='png', dpi=300)
+plt.close()
 
 # Load dataset for classification (Problem 2)
 pima_data = pd.read_csv('./assignment_2/pimaindiansdiabetes2.csv')
